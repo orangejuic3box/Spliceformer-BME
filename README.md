@@ -39,20 +39,20 @@ Further examples for making predictions with pre-trained weights and predicting 
 To reproduce the results in the Jupyter notebooks it is neccesary to run them roughly in the following order:
 
 1. Construct dataset
-    * construct_Ensemble_datasets.ipynb
+    * construct_ENSMBL_datasets.ipynb
 
 2. Model training and evaluation
     * train_transformer_model.ipynb
-    * train_spliceai_10k_model.ipynb
-    * train_spliceai_model_gencode_keras.ipynb
-    * test_spliceai_model_pretrained.ipynb
+    * train_SpliceAI_10k_model.ipynb
+    * train_SpliceAI_model_Gencode_Keras.ipynb
+    * test_SpliceAI_model_pretrained.ipynb
   
 3. Fine-tuning on RNA-Seq annotations (only necessary for some of the analysis notebooks)
    * train_transformer_model-fine_tuning-GTEX-ICE-Combined-all.ipynb
 
 4. Analysis
     * get_splice_site_prediction_scores.ipynb
-    * spliceAI_vs_transformer_score_comparison.ipynb
+    * SpliceAI_vs_transformer_score_comparison.ipynb
     * get_attention_plots.ipynb
     * get_umap_plots.ipynb
     * plot_transformer_training_loss.ipynb
