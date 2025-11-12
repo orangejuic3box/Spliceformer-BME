@@ -1,0 +1,43 @@
+ + Meeting Notes Fri Nov 7
+ + 
+ + strand + is forward read
+ + strand - is backwards read
+ +
+ + txStart exon start #
+ + txEnd start end #
+ + 
+ + 
+ + Justification of whats is training and what is test
+ + 
+ + Model 1: Spliceformer only Human (Original Baseline)
+ + Model 2/3/4: Human & 1 organism
+ + Model 5: Human & all organisms
+ + 
+ + 
+ + Training
+   - house mouse
+   - zebrafish
+   - dog
+   - trained specifically on splicing locations for specific genes present in all of the training organisms
+ + Test
+   - rat: gentically close to house mouse, it should perform well?
+ + 
+ + find the genes present in all training organisms
+ + 
+ + For all organisms: 
+   - get gencode annotation
+   - run through python notebook
+   - get the set of all specific genes present in all organisms
+   - trained on that set of specific genes, only when more than one organism present in training set
+   - 
+ + 
+ + Task for reading week:
+   + Everyone trains a model with Human & 1 organism
+   + Maggie: zebrafish
+   + Isla: house mouse
+   + Carissa: dog or chimpanzee, you pick
+ + 
+ + Novel-knowledge is generating better annotation for splicing site
+ +
+ +
+====================================
