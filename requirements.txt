@@ -8,8 +8,9 @@ matplotlib
 pandas
 pyfaidx
 pyfastx
-regex==2021.10.8
+regex
 scikit-learn
 torch
 transformers
 umap-learn
+aiohttp
