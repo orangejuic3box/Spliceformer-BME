@@ -11,10 +11,11 @@ import gffutils
 from scipy.sparse import dok_matrix, save_npz
 
 SPECIES_DIRS = {
-    "danio_rerio": "data/danio_rerio",
-    #"homo_sapiens": "data/homo_sapiens",
-    #"mus_musculus": "data/mus_musculus",
-    #"pan_troglodyes": "data/pan_troglodytes",
+
+    #"danio_rerio": "data/danio_rerio",
+    "mus_musculus": "data/mus_musculus",
+    "pan_troglodytes": "data/pan_troglodytes",
+    "homo_sapiens": "data/homo_sapiens"
 }
 
 ORTHOLOGY_FILE = "data/orthology.tsv"
@@ -200,6 +201,17 @@ def createDataset_for_species(
 ):
     print(f"Building dataset for {species_name} -> split {setType}")
 
+    # How many transcripts per gene to keep (top-K by number of junctions)
+    if species_name == "homo_sapiens":
+        TOP_K_TRANSCRIPTS = 3
+    elif species_name == "mus_musculus":
+        TOP_K_TRANSCRIPTS = 2
+    elif species_name == "pan_troglodytes":
+        TOP_K_TRANSCRIPTS = 2
+    else:
+        TOP_K_TRANSCRIPTS = 1
+
+
     genes = list(gtf_db.features_of_type("gene"))
 
     CHROM_GROUP = list(fasta.keys())
@@ -234,6 +246,7 @@ def createDataset_for_species(
 
         chrom = gene[0]
 
+        # Map GTF contig name to FASTA key (handle 'chr' prefix/no prefix)
         if chrom in CHROM_GROUP:
             chrom_key = chrom
         elif chrom.startswith("chr") and chrom[3:] in CHROM_GROUP:
@@ -244,6 +257,7 @@ def createDataset_for_species(
             # skip contigs we don't have sequence for
             continue
 
+        # Canonical chromosome filter
         if allowed_chroms is not None:
             clean = chrom_key[3:] if chrom_key.startswith("chr") else chrom_key
             if clean not in allowed_chroms:
@@ -251,6 +265,7 @@ def createDataset_for_species(
 
         gene_id = gene.attributes.get("gene_id", ["NA"])[0]
 
+        # Only include genes present in orthology mapping and assigned to this split
         grp = gene_split_map.get((species_name, gene_id), None)
         if grp is None:
             continue
@@ -263,6 +278,7 @@ def createDataset_for_species(
         gene_start = int(gene[3])
         gene_end = int(gene[4])
 
+        # Get transcripts for this gene
         transcripts = list(gtf_db.children(gene, featuretype="transcript"))
         if len(transcripts) == 0:
             # try alternative transcript feature names
@@ -288,9 +304,16 @@ def createDataset_for_species(
             if allowed_biotypes and transcript_biotype not in allowed_biotypes:
                 continue
 
+            # TSL rule: require TSL=1 if present, allow missing
             tsl = transcript.attributes.get("transcript_support_level", [""])[0].strip()
-            if tsl and tsl.split()[0] != "1":
-                continue
+
+            if species_name in ["homo_sapiens", "pan troglodytes", "mus musculus"]:
+                if not tsl or tsl.split()[0] != "1":
+                    continue
+            else:
+                if tsl and tsl.split()[0] != "1":
+                    continue
+
             transcripts_passing_biotype_tsl += 1
 
             # Junctions and intron filter
@@ -317,19 +340,11 @@ def createDataset_for_species(
 
         genes_with_good_transcript += 1
 
+        # pick up to TOP_K_TRANSCRIPTS best isoforms (by number of junctions)
         good_transcripts.sort(key=lambda d: d["n_junctions"], reverse=True)
-        best = good_transcripts[0]
+        selected_transcripts = good_transcripts[:TOP_K_TRANSCRIPTS]
 
-        transcript = best["transcript"]
-        transcript_id = best["transcript_id"]
-        jn_start = best["jn_start"]
-        jn_end = best["jn_end"]
-        Y_type = best["Y_type"]
-        Y_idx = best["Y_idx"]
-
-        tx_start = int(transcript[3])
-        tx_end = int(transcript[4])
-
+        # per-chromosome sparse sequence handling (flushing)
         if prev_chrom is None:
             prev_chrom = chrom_key
         elif chrom_key != prev_chrom:
@@ -350,6 +365,7 @@ def createDataset_for_species(
                 del seqData[prev_chrom]
             prev_chrom = chrom_key
 
+        # Lazily create seqData for this chromosome if needed
         if chrom_key not in seqData:
             try:
                 L = len(fasta[chrom_key])
@@ -358,6 +374,7 @@ def createDataset_for_species(
                 continue
             seqData[chrom_key] = dok_matrix((L, 5), dtype=np.int8)
 
+        # Load gene sequence once and write into sparse matrix
         try:
             seq = fasta[chrom_key][gene_start - 1 : gene_end].seq
         except Exception as e:
@@ -369,25 +386,35 @@ def createDataset_for_species(
         X = create_datapoints(seq, strand, gene_start, gene_end)
         seqData[chrom_key][gene_start - 1 : gene_end, :] = X
 
-
-        # Map from "{species}---{transcript_id}" -> (Y_type, Y_idx)
-        tx_key = f"{species_name}---{transcript_id}"
-        transcriptToLabel[tx_key] = (Y_type, Y_idx)
-
-        # Annotation line: "species---gene---transcript"
-        name = f"{species_name}---{gene_id}---{transcript_id}"
-
+        # add labels + annotation for each selected transcript
         out_ann_dir = os.path.join(data_dir, "annotations")
         os.makedirs(out_ann_dir, exist_ok=True)
         ann_file = os.path.join(
             out_ann_dir, f"annotation_{species_name}_{setType}.txt"
         )
 
-        with open(ann_file, "a") as the_file:
-            the_file.write(
-                f"{name}\t{chrom_key}\t{strand}\t{tx_start}\t{tx_end}\n"
-            )
+        for best in selected_transcripts:
+            transcript = best["transcript"]
+            transcript_id = best["transcript_id"]
+            Y_type = best["Y_type"]
+            Y_idx = best["Y_idx"]
 
+            tx_start = int(transcript[3])
+            tx_end = int(transcript[4])
+
+            # Map from "{species}---{transcript_id}" -> (Y_type, Y_idx)
+            tx_key = f"{species_name}---{transcript_id}"
+            transcriptToLabel[tx_key] = (Y_type, Y_idx)
+
+            # Annotation line: "species---gene---transcript"
+            name = f"{species_name}---{gene_id}---{transcript_id}"
+
+            with open(ann_file, "a") as the_file:
+                the_file.write(
+                    f"{name}\t{chrom_key}\t{strand}\t{tx_start}\t{tx_end}\n"
+                )
+
+    # flush any remaining chromosome matrices
     for chrom, mat in list(seqData.items()):
         if mat is None:
             continue
@@ -400,6 +427,7 @@ def createDataset_for_species(
         except Exception as e:
             tqdm.write(f"Failed saving npz for {species_name} {chrom}: {e}")
 
+    # Save transcriptToLabel mapping
     with open(
         os.path.join(
             data_dir, f"sparse_discrete_label_data_{species_name}_{setType}.pickle"
@@ -488,7 +516,6 @@ def main():
             createDataset_for_species(
                 split,
                 species_name,
-                paths,
                 gtf_db,
                 fasta,
                 {k: v for k, v in gene_split_map.items()},
