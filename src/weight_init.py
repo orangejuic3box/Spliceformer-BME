@@ -9,6 +9,5 @@ def keras_init(m):
         a = np.sqrt(6 / (m.in_channels * (fin + fout)))
         torch.nn.init.uniform_(m.weight, a=-a, b=a)
         
-        # Type-safe: only zero bias if it exists
         if m.bias is not None:
             torch.nn.init.zeros_(m.bias)
